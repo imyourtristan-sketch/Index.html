@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Housekeeping Room Status Board</title>
+  
+  <!-- Firebase Realtime Database SDK (v9 Compat for single file usage) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', Arial, sans-serif;
+    }
+
+    body {
+      background-color: #eef2f5;
+      padding: 15px;
+      color: #333;
+    }
+
+    .header {
+      background-color: #ffffff;
+      padding: 15px 20px;
+      text-align: center;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+      border: 1px solid #dcdcdc;
+    }
+
+    .header h1 {
+      font-size: 24px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #2c3e50;
+      margin-bottom: 8px;
+    }
+
+    .sync-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #27ae60;
+      background: #e8f8f5;
+      padding: 4px 12px;
+      border-radius: 12px;
+    }
+
+    .status-dot {
+      width: 9px;
+      height: 9px;
+      background-color: #27ae60;
+      border-radius: 50%;
+      display: inline-block;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.4; }
+      100% { opacity: 1; }
+    }
+
+    .legend-bar {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .legend-item {
+      font-size: 11px;
+      font-weight: bold;
+      padding: 3px 8px;
+      border-radius: 4px;
+      color: #fff;
+    }
+
+    .board-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    @media (max-width: 900px) {
+      .board-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .board-column {
+      background: #ffffff;
+      border: 2px solid #bdc3c7;
+      border-radius: 6px;
+      padding: 10px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+    }
+
+    .room-row {
+      display: flex;
+      align-items: center;
+      padding: 6px 4px;
+      border-bottom: 1px solid #e2e8f0;
+      gap: 8px;
+    }
+
+    .room-row:last-child {
+      border-bottom: none;
+    }
+
+    .room-number {
+      font-weight: 800;
+      font-size: 18px;
+      width: 55px;
+      color: #1a252f;
+      letter-spacing: 0.5px;
+    }
+
+    .status-select {
+      font-weight: bold;
+      font-size: 13px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      border: 1px solid rgba(0,0,0,0.2);
+      cursor: pointer;
+      min-width: 110px;
+      text-align: center;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+      transition: all 0.2s ease;
+    }
+
+    .note-input {
+      flex: 1;
+      border: 1px dashed #ccc;
+      padding: 4px 6px;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 3px;
+      color: #444;
+      text-transform: uppercase;
+      background: #fafafa;
+    }
+
+    .note-input:focus {
+      background: #fff;
+      border-color: #3498db;
+      outline: none;
+    }
+
+    /* Color Codes matching Visual Tags */
+    .bg-vci { background-color: #66bb6a; color: #fff; }     /* Bright Green */
+    .bg-vc  { background-color: #81c784; color: #fff; }     /* Soft Green */
+    .bg-vd  { background-color: #e57373; color: #fff; }     /* Light Red */
+    .bg-vcvd{ background-color: #d32f2f; color: #fff; }     /* Dark Red/Salmon */
+    .bg-lsg { background-color: #fbc02d; color: #333; }     /* Yellow / Gold */
+    .bg-occ { background-color: #42a5f5; color: #fff; }     /* Blue */
+    .bg-oos { background-color: #78909c; color: #fff; }     /* Slate Gray */
+    .bg-ooo { background-color: #455a64; color: #fff; }     /* Dark Slate */
+    .bg-hu  { background-color: #ff9800; color: #fff; }     /* Orange */
+    .bg-due { background-color: #8e24aa; color: #fff; }     /* Purple */
+
+    .setup-banner {
+      background: #fff3cd;
+      border: 1px solid #ffeeba;
+      color: #856404;
+      padding: 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      margin-bottom: 15px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>HOUSEKEEPING ROOM STATUS BOARD</h1>
+    <div class="sync-status">
+      <span class="status-dot"></span> Live Sync Active
+    </div>
+    <div class="legend-bar">
+      <span class="legend-item bg-vci">VCI - Clean Inspected</span>
+      <span class="legend-item bg-vc">VC - Vacant Clean</span>
+      <span class="legend-item bg-vcvd">VC/VD - Dirty/Clean</span>
+      <span class="legend-item bg-vd">VD - Vacant Dirty</span>
+      <span class="legend-item bg-lsg">LSG - Light Service</span>
+      <span class="legend-item bg-occ">OCC - Occupied</span>
+      <span class="legend-item bg-due">DUE OUT</span>
+      <span class="legend-item bg-oos">OOS / OOO</span>
+      <span class="legend-item bg-hu">HU - House Use</span>
+    </div>
+  </div>
+
+  <div class="board-grid">
+    <!-- Column 1: 300 Series -->
+    <div class="board-column" id="col-300"></div>
+
+    <!-- Column 2: 500 Series -->
+    <div class="board-column" id="col-500"></div>
+
+    <!-- Column 3: 600 Series -->
+    <div class="board-column" id="col-600"></div>
+  </div>
+
+  <script>
+    // --- Initial Board Data (Imported directly from picture) ---
+    const rooms300 = [
+      { id: "301", status: "LSG", note: "" },
+      { id: "302", status: "LSG", note: "" },
+      { id: "303", status: "VC",  note: "" },
+      { id: "304", status: "LSG", note: "FRIDAY 9AM MUR" },
+      { id: "305", status: "LSG", note: "" },
+      { id: "306", status: "VC/VD", note: "" },
+      { id: "307", status: "VCI", note: "TUESDAY - MUR" },
+      { id: "308", status: "VCI", note: "" },
+      { id: "309", status: "VCI", note: "PQ" },
+      { id: "310", status: "VCI", note: "" },
+      { id: "311", status: "VC/VD", note: "" },
+      { id: "312", status: "LSG", note: "" },
+      { id: "313", status: "VC/VD", note: "" },
+      { id: "314", status: "VC",  note: "THURSDAY AFTERNOON - MUR" },
+      { id: "315", status: "OCC", note: "" },
+      { id: "316", status: "VCI", note: "" },
+      { id: "317", status: "LSG", note: "FRIDAY MUR" },
+      { id: "318", status: "VD",  note: "" },
+      { id: "319", status: "VC/VD", note: "" },
+      { id: "320", status: "LSG", note: "FRIDAY 1PM-3PM MUR" },
+      { id: "321", status: "VCI", note: "" },
+      { id: "322", status: "VC/VD", note: "" },
+      { id: "323", status: "VCI", note: "" }
+    ];
+
+    const rooms500 = [
+      { id: "501", status: "VC/VD", note: "" },
+      { id: "502", status: "VCI", note: "" },
+      { id: "503", status: "VCI", note: "" },
+      { id: "504", status: "VCI", note: "MONDAY 10AM MUR" },
+      { id: "505", status: "VCI", note: "4PM OUT" },
+      { id: "506", status: "OOO", note: "OOO / OOS" },
+      { id: "507", status: "VCI", note: "" },
+      { id: "508", status: "VCI", note: "" },
+      { id: "509", status: "VCI", note: "" },
+      { id: "510", status: "OCC", note: "" },
+      { id: "511", status: "VCI", note: "" },
+      { id: "512", status: "OCC", note: "" },
+      { id: "513", status: "VCI", note: "" },
+      { id: "514", status: "VCI", note: "" },
+      { id: "515", status: "VCI", note: "DT" },
+      { id: "516", status: "VCI", note: "DT" },
+      { id: "517", status: "VCI", note: "" },
+      { id: "518", status: "VCI", note: "" },
+      { id: "519", status: "VCI", note: "" },
+      { id: "520", status: "VCI", note: "" },
+      { id: "521", status: "VCI", note: "" },
+      { id: "522", status: "VCI", note: "" },
+      { id: "523", status: "VCI", note: "" }
+    ];
+
+    const rooms600 = [
+      { id: "601", status: "VCI", note: "" },
+      { id: "602", status: "VCI", note: "" },
+      { id: "603", status: "VCI", note: "" },
+      { id: "604", status: "VCI", note: "" },
+      { id: "605", status: "VCI", note: "" },
+      { id: "606", status: "VCI", note: "" },
+      { id: "607", status: "VCI", note: "" },
+      { id: "608", status: "VCI", note: "" },
+      { id: "609", status: "VCI", note: "" },
+      { id: "610", status: "VCI", note: "" },
+      { id: "611", status: "VCI", note: "" },
+      { id: "612", status: "VC/VD", note: "" },
+      { id: "613", status: "VCI", note: "" },
+      { id: "614", status: "VC/VD", note: "" },
+      { id: "615", status: "VC/VD", note: "" },
+      { id: "616", status: "VC/VD", note: "" },
+      { id: "617", status: "VC/VD", note: "" },
+      { id: "618", status: "DUE OUT", note: "" },
+      { id: "619", status: "VC/VD", note: "" },
+      { id: "620", status: "VCI", note: "" },
+      { id: "621", status: "VC/VD", note: "" },
+      { id: "622", status: "VCI", note: "" },
+      { id: "623", status: "VC/VD", note: "LE (507)" },
+      { id: "624", status: "VCI", note: "" }
+    ];
+
+    // Status Styling Map
+    const statusClasses = {
+      'VCI': 'bg-vci',
+      'VC': 'bg-vc',
+      'VD': 'bg-vd',
+      'VC/VD': 'bg-vcvd',
+      'LSG': 'bg-lsg',
+      'OCC': 'bg-occ',
+      'OOS': 'bg-oos',
+      'OOO': 'bg-ooo',
+      'HU': 'bg-hu',
+      'DUE OUT': 'bg-due'
+    };
+
+    // --- Firebase Setup for Sharing Across Users ---
+    // (A standard shared demo Realtime DB configuration)
+    const firebaseConfig = {
+      databaseURL: "https://housekeeping-board-default-rtdb.firebaseio.com"
+    };
+
+    let dbRef = null;
+    try {
+      firebase.initializeApp(firebaseConfig);
+      dbRef = firebase.database().ref("room_status_board");
+    } catch (e) {
+      console.warn("Firebase initialized in local mode.");
+    }
+
+    // Initialize Local State
+    let boardState = {};
+    [...rooms300, ...rooms500, ...rooms600].forEach(room => {
+      boardState[room.id] = { status: room.status, note: room.note };
+    });
+
+    // Render Board DOM
+    function renderColumn(containerId, rooms) {
+      const container = document.getElementById(containerId);
+      container.innerHTML = '';
+
+      rooms.forEach(room => {
+        const row = document.createElement('div');
+        row.className = 'room-row';
+
+        const roomNum = document.createElement('div');
+        roomNum.className = 'room-number';
+        roomNum.textContent = room.id;
+
+        const select = document.createElement('select');
+        select.className = `status-select ${statusClasses[boardState[room.id]?.status || 'VCI']}`;
+        select.dataset.roomId = room.id;
+
+        const statuses = ['VCI', 'VC', 'VD', 'VC/VD', 'LSG', 'OCC', 'OOS', 'OOO', 'HU', 'DUE OUT'];
+        statuses.forEach(s => {
+          const opt = document.createElement('option');
+          opt.value = s;
+          opt.textContent = s;
+          if (boardState[room.id]?.status === s) opt.selected = true;
+          select.appendChild(opt);
+        });
+
+        select.addEventListener('change', (e) => {
+          const newStatus = e.target.value;
+          updateRoom(room.id, newStatus, boardState[room.id].note);
+        });
+
+        const noteInput = document.createElement('input');
+        noteInput.type = 'text';
+        noteInput.className = 'note-input';
+        noteInput.placeholder = 'Add note...';
+        noteInput.value = boardState[room.id]?.note || '';
+        noteInput.addEventListener('change', (e) => {
+          updateRoom(room.id, boardState[room.id].status, e.target.value);
+        });
+
+        row.appendChild(roomNum);
+        row.appendChild(select);
+        row.appendChild(noteInput);
+        container.appendChild(row);
+      });
+    }
+
+    function renderAll() {
+      renderColumn('col-300', rooms300);
+      renderColumn('col-500', rooms500);
+      renderColumn('col-600', rooms600);
+    }
+
+    // Update Room Data
+    function updateRoom(roomId, status, note) {
+      boardState[roomId] = { status, note };
+      
+      // Save locally
+      localStorage.setItem('hk_board_state', JSON.stringify(boardState));
+      
+      // Update Cloud DB for instant sharing
+      if (dbRef) {
+        dbRef.child(roomId).set({ status, note });
+      }
+
+      renderAll();
+    }
+
+    // Sync from Cloud DB
+    if (dbRef) {
+      dbRef.on('value', (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          boardState = { ...boardState, ...data };
+          localStorage.setItem('hk_board_state', JSON.stringify(boardState));
+          renderAll();
+        } else {
+          // Initialize DB with initial snapshot
+          dbRef.set(boardState);
+        }
+      });
+    } else {
+      // Fallback to local storage if offline
+      const local = localStorage.getItem('hk_board_state');
+      if (local) {
+        boardState = JSON.parse(local);
+      }
+      renderAll();
+    }
+
+    // Initial Render
+    renderAll();
+  </script>
+</body>
+</html>
